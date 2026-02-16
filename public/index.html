@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Metaverse Office - Extreme Close Up</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+        }
+    </style>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.150.1/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/" } }
+    </script>
+</head>
+
+<body>
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        const socket = io();
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+
+        // FOV 40: Tăng nhẹ FOV khi ở quá gần để tránh bị "chóng mặt" nhưng vẫn giữ cảm giác to lớn
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+
+        const loader = new GLTFLoader();
+        window.players = {};
+        window.myAvatar = null;
+
+        loader.load('models/isometric_office.glb', (gltf) => {
+            const office = gltf.scene;
+            office.scale.set(6, 6, 6);
+            scene.add(office);
+        });
+
+        window.createPlayer = (id, data, isMe) => {
+            const modelPath = data.model === 'boy' ? 'models/boy.glb' : 'models/girl.glb';
+            loader.load(modelPath, (gltf) => {
+                const model = gltf.scene;
+                model.scale.set(12, 12, 12);
+                model.position.set(data.x || 0, 3.5, data.z || 0);
+                scene.add(model);
+                window.players[id] = model;
+                if (isMe) window.myAvatar = model;
+            });
+        };
+
+        // Logic socket giữ nguyên
+        socket.on('currentPlayers', (serverPlayers) => {
+            Object.keys(serverPlayers).forEach(id => {
+                if (!window.players[id]) window.createPlayer(id, serverPlayers[id], id === socket.id);
+            });
+        });
+        socket.on('newPlayer', (data) => window.createPlayer(data.id, data, false));
+        socket.on('playerMoved', (data) => {
+            if (window.players[data.id] && data.id !== socket.id) {
+                window.players[data.id].position.set(data.x, 3.5, data.z);
+                window.players[data.id].rotation.y = data.rotation;
+            }
+        });
+
+        const keys = {};
+        window.onkeydown = (e) => keys[e.code] = true;
+        window.onkeyup = (e) => keys[e.code] = false;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (window.myAvatar) {
+                let moved = false;
+                const speed = 0.45;
+
+                if (keys['ArrowUp'] || keys['KeyW']) { window.myAvatar.translateZ(speed); moved = true; }
+                if (keys['ArrowDown'] || keys['KeyS']) { window.myAvatar.translateZ(-speed); moved = true; }
+                if (keys['ArrowLeft'] || keys['KeyA']) { window.myAvatar.rotation.y += 0.05; moved = true; }
+                if (keys['ArrowRight'] || keys['KeyD']) { window.myAvatar.rotation.y -= 0.05; moved = true; }
+
+                if (moved) {
+                    socket.emit('playerMovement', { x: window.myAvatar.position.x, z: window.myAvatar.position.z, rotation: window.myAvatar.rotation.y });
+                }
+
+                // --- CAMERA SIÊU CẬN (GIẢM THÊM 50%) ---
+                // Y = 3.5 (ngang vai nhân vật), Z = -4 (ngay sát lưng)
+                const offset = new THREE.Vector3(0, 3.5, -4);
+                const idealPos = offset.applyMatrix4(window.myAvatar.matrixWorld);
+
+                camera.position.copy(idealPos);
+
+                // Nhìn hơi chếch lên một chút để thấy không gian phía trước
+                camera.lookAt(window.myAvatar.position.x, window.myAvatar.position.y + 4.5, window.myAvatar.position.z);
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+
+</html>
