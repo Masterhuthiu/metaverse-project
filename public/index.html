@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="vi">
 
 <head>
@@ -38,7 +38,7 @@
         window.players = {};
         window.myAvatar = null;
 
-        loader.load('models/isometric_office.glb', (gltf) => {
+        loader.load('models/map.glb', (gltf) => {
             const office = gltf.scene;
             office.scale.set(6, 6, 6);
             scene.add(office);
@@ -102,6 +102,1126 @@
             renderer.render(scene, camera);
         }
         animate();
+    </script>
+</body>
+
+</html> -->
+<!-- 
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Metaverse Office - Mouse Control</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+        }
+    </style>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+
+<body>
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const socket = io();
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+
+        /* ================= CAMERA ================= */
+        const camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            2000
+        );
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        /* ================= ORBIT CONTROL ================= */
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+
+        controls.minDistance = 3;
+        controls.maxDistance = 30;
+
+        controls.enablePan = false;      // Không cho kéo lệch map
+        controls.maxPolarAngle = Math.PI / 2.1; // Không cho lật xuống đất
+
+        /* ================= LIGHT ================= */
+        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+
+        /* ================= LOAD MAP ================= */
+        const loader = new GLTFLoader();
+        window.players = {};
+        window.myAvatar = null;
+
+        loader.load('models/map.glb', (gltf) => {
+            const office = gltf.scene;
+            office.scale.set(6, 6, 6);
+            scene.add(office);
+        });
+
+        /* ================= CREATE PLAYER ================= */
+        window.createPlayer = (id, data, isMe) => {
+            const modelPath = data.model === 'boy'
+                ? 'models/Soldier.glb'
+                : 'models/Soldier.glb';
+
+            loader.load(modelPath, (gltf) => {
+                const model = gltf.scene;
+                model.scale.set(6, 14, 6);
+                model.position.set(data.x || 0, 3.5, data.z || 0);
+
+                scene.add(model);
+                window.players[id] = model;
+
+                if (isMe) {
+                    window.myAvatar = model;
+
+                    // Đặt camera ban đầu phía sau nhân vật
+                    camera.position.set(
+                        model.position.x,
+                        model.position.y + 6,
+                        model.position.z + 12
+                    );
+
+                    controls.target.copy(model.position);
+                }
+            });
+        };
+
+        /* ================= SOCKET EVENTS ================= */
+        socket.on('currentPlayers', (serverPlayers) => {
+            Object.keys(serverPlayers).forEach(id => {
+                if (!window.players[id])
+                    window.createPlayer(id, serverPlayers[id], id === socket.id);
+            });
+        });
+
+        socket.on('newPlayer', (data) =>
+            window.createPlayer(data.id, data, false)
+        );
+
+        socket.on('playerMoved', (data) => {
+            if (window.players[data.id] && data.id !== socket.id) {
+                window.players[data.id].position.set(data.x, 3.5, data.z);
+                window.players[data.id].rotation.y = data.rotation;
+            }
+        });
+
+        /* ================= KEY CONTROL ================= */
+        const keys = {};
+        window.onkeydown = (e) => keys[e.code] = true;
+        window.onkeyup = (e) => keys[e.code] = false;
+
+        /* ================= ANIMATION LOOP ================= */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (window.myAvatar) {
+                let moved = false;
+                const speed = 0.45;
+
+                if (keys['ArrowUp'] || keys['KeyW']) {
+                    window.myAvatar.translateZ(speed);
+                    moved = true;
+                }
+                if (keys['ArrowDown'] || keys['KeyS']) {
+                    window.myAvatar.translateZ(-speed);
+                    moved = true;
+                }
+                if (keys['ArrowLeft'] || keys['KeyA']) {
+                    window.myAvatar.rotation.y += 0.05;
+                    moved = true;
+                }
+                if (keys['ArrowRight'] || keys['KeyD']) {
+                    window.myAvatar.rotation.y -= 0.05;
+                    moved = true;
+                }
+
+                if (moved) {
+                    socket.emit('playerMovement', {
+                        x: window.myAvatar.position.x,
+                        z: window.myAvatar.position.z,
+                        rotation: window.myAvatar.rotation.y
+                    });
+                }
+
+                // Camera luôn follow nhân vật
+                controls.target.copy(window.myAvatar.position);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        /* ================= RESIZE ================= */
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html> -->
+
+<!-- <!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Metaverse Office - Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+        }
+    </style>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+
+<body>
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script type="module">
+
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        /* ================= BASIC ================= */
+
+        const socket = io();
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+
+        const clock = new THREE.Clock();
+
+        /* ================= CAMERA ================= */
+
+        const camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            2000
+        );
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        /* ================= CONTROLS ================= */
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.enablePan = false;
+        controls.minDistance = 3;
+        controls.maxDistance = 30;
+        controls.maxPolarAngle = Math.PI / 2.1;
+
+        /* ================= LIGHT ================= */
+
+        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+
+        /* ================= LOADERS ================= */
+
+        const loader = new GLTFLoader();
+
+        window.players = {};
+        window.mixers = {};
+        window.actions = {};
+        window.myAvatar = null;
+
+        /* ================= LOAD MAP ================= */
+
+        loader.load('models/map.glb', (gltf) => {
+            const office = gltf.scene;
+            office.scale.set(6, 6, 6);
+            scene.add(office);
+        });
+
+        /* ================= CREATE PLAYER ================= */
+
+        window.createPlayer = (id, data, isMe) => {
+
+            loader.load('models/Soldier.glb', (gltf) => {
+
+                const model = gltf.scene;
+                model.scale.set(6, 14, 6);
+                model.position.set(data.x || 0, 3.5, data.z || 0);
+
+                scene.add(model);
+                window.players[id] = model;
+
+                /* ===== ANIMATION SETUP ===== */
+
+                const mixer = new THREE.AnimationMixer(model);
+                window.mixers[id] = mixer;
+
+                const clips = gltf.animations;
+
+                const idle = mixer.clipAction(clips[0]);
+                const walk = mixer.clipAction(clips[3] || clips[1]);
+
+                idle.play();
+
+                window.actions[id] = {
+                    idle: idle,
+                    walk: walk,
+                    current: idle
+                };
+
+                if (isMe) {
+                    window.myAvatar = model;
+
+                    camera.position.set(
+                        model.position.x,
+                        model.position.y + 6,
+                        model.position.z + 12
+                    );
+
+                    controls.target.copy(model.position);
+                }
+            });
+        };
+
+        /* ================= SOCKET EVENTS ================= */
+
+        socket.on('currentPlayers', (serverPlayers) => {
+            Object.keys(serverPlayers).forEach(id => {
+                if (!window.players[id])
+                    window.createPlayer(id, serverPlayers[id], id === socket.id);
+            });
+        });
+
+        socket.on('newPlayer', (data) =>
+            window.createPlayer(data.id, data, false)
+        );
+
+        socket.on('playerMoved', (data) => {
+            if (window.players[data.id] && data.id !== socket.id) {
+                window.players[data.id].position.set(data.x, 3.5, data.z);
+                window.players[data.id].rotation.y = data.rotation;
+            }
+        });
+
+        /* ================= KEYBOARD ================= */
+
+        const keys = {};
+        window.onkeydown = (e) => keys[e.code] = true;
+        window.onkeyup = (e) => keys[e.code] = false;
+
+        /* ================= SWITCH ANIMATION ================= */
+
+        function switchAnimation(id, type) {
+
+            const actionSet = window.actions[id];
+            if (!actionSet) return;
+
+            const next = actionSet[type];
+            if (actionSet.current === next) return;
+
+            actionSet.current.fadeOut(0.2);
+            next.reset().fadeIn(0.2).play();
+
+            actionSet.current = next;
+        }
+
+        /* ================= LOOP ================= */
+
+        function animate() {
+
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            // update animation mixers
+            Object.values(window.mixers).forEach(mixer => {
+                mixer.update(delta);
+            });
+
+            if (window.myAvatar) {
+
+                let moved = false;
+                const speed = 0.45;
+
+                if (keys['ArrowUp'] || keys['KeyW']) {
+                    window.myAvatar.translateZ(speed);
+                    moved = true;
+                }
+
+                if (keys['ArrowDown'] || keys['KeyS']) {
+                    window.myAvatar.translateZ(-speed);
+                    moved = true;
+                }
+
+                if (keys['ArrowLeft'] || keys['KeyA']) {
+                    window.myAvatar.rotation.y += 0.05;
+                    moved = true;
+                }
+
+                if (keys['ArrowRight'] || keys['KeyD']) {
+                    window.myAvatar.rotation.y -= 0.05;
+                    moved = true;
+                }
+
+                if (moved) {
+
+                    switchAnimation(socket.id, "walk");
+
+                    socket.emit('playerMovement', {
+                        x: window.myAvatar.position.x,
+                        z: window.myAvatar.position.z,
+                        rotation: window.myAvatar.rotation.y
+                    });
+
+                } else {
+
+                    switchAnimation(socket.id, "idle");
+                }
+
+                controls.target.copy(window.myAvatar.position);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        /* ================= RESIZE ================= */
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+
+</html> -->
+
+
+<!-- <!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Metaverse Office - Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+        }
+    </style>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+
+<body>
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script type="module">
+
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        /* ================= BASIC ================= */
+
+        const socket = io();
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+
+        const clock = new THREE.Clock();
+
+        /* ================= CAMERA ================= */
+
+        const camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            2000
+        );
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        /* ================= CONTROLS ================= */
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.enablePan = false;
+
+        // --- CHỈNH KHOẢNG CÁCH ZOOM (Cuộn chuột) ---
+        controls.minDistance = 5;   // Khoảng cách gần nhất (mặc định cũ là 3)
+        controls.maxDistance = 50;  // Khoảng cách xa nhất (mặc định cũ là 30)
+
+        controls.maxPolarAngle = Math.PI / 2.1;
+
+        /* ================= LIGHT ================= */
+
+        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+
+        /* ================= LOADERS ================= */
+
+        const loader = new GLTFLoader();
+
+        window.players = {};
+        window.mixers = {};
+        window.actions = {};
+        window.myAvatar = null;
+
+        /* ================= LOAD MAP ================= */
+
+        loader.load('models/map.glb', (gltf) => {
+            const office = gltf.scene;
+            office.scale.set(6, 6, 6);
+            scene.add(office);
+        });
+
+        /* ================= CREATE PLAYER ================= */
+
+        window.createPlayer = (id, data, isMe) => {
+
+            loader.load('models/Soldier.glb', (gltf) => {
+
+                const model = gltf.scene;
+                model.scale.set(6, 14, 6);
+                model.position.set(data.x || 0, 3.5, data.z || 0);
+
+                scene.add(model);
+                window.players[id] = model;
+
+                /* ===== ANIMATION SETUP ===== */
+
+                const mixer = new THREE.AnimationMixer(model);
+                window.mixers[id] = mixer;
+
+                const clips = gltf.animations;
+
+                const idle = mixer.clipAction(clips[0]);
+                const walk = mixer.clipAction(clips[3] || clips[1]);
+
+                idle.play();
+
+                window.actions[id] = {
+                    idle: idle,
+                    walk: walk,
+                    current: idle
+                };
+
+                if (isMe) {
+                    window.myAvatar = model;
+
+                    // --- CHỈNH VỊ TRÍ CAMERA BAN ĐẦU KHI XUẤT HIỆN ---
+                    // x: ngang, y: độ cao, z: khoảng cách xa gần so với nhân vật
+                    camera.position.set(
+                        model.position.x,
+                        model.position.y + 10, // Tăng độ cao (mặc định cũ là 6)
+                        model.position.z + 25  // Tăng khoảng cách đứng sau (mặc định cũ là 12)
+                    );
+
+                    controls.target.copy(model.position);
+                }
+            });
+        };
+
+        /* ================= SOCKET EVENTS ================= */
+
+        socket.on('currentPlayers', (serverPlayers) => {
+            Object.keys(serverPlayers).forEach(id => {
+                if (!window.players[id])
+                    window.createPlayer(id, serverPlayers[id], id === socket.id);
+            });
+        });
+
+        socket.on('newPlayer', (data) =>
+            window.createPlayer(data.id, data, false)
+        );
+
+        socket.on('playerMoved', (data) => {
+            if (window.players[data.id] && data.id !== socket.id) {
+                window.players[data.id].position.set(data.x, 3.5, data.z);
+                window.players[data.id].rotation.y = data.rotation;
+            }
+        });
+
+        /* ================= KEYBOARD ================= */
+
+        const keys = {};
+        window.onkeydown = (e) => keys[e.code] = true;
+        window.onkeyup = (e) => keys[e.code] = false;
+
+        /* ================= SWITCH ANIMATION ================= */
+
+        function switchAnimation(id, type) {
+
+            const actionSet = window.actions[id];
+            if (!actionSet) return;
+
+            const next = actionSet[type];
+            if (actionSet.current === next) return;
+
+            actionSet.current.fadeOut(0.2);
+            next.reset().fadeIn(0.2).play();
+
+            actionSet.current = next;
+        }
+
+        /* ================= LOOP ================= */
+
+        function animate() {
+
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            // update animation mixers
+            Object.values(window.mixers).forEach(mixer => {
+                mixer.update(delta);
+            });
+
+            if (window.myAvatar) {
+
+                let moved = false;
+                const speed = 0.45;
+
+                if (keys['ArrowUp'] || keys['KeyW']) {
+                    window.myAvatar.translateZ(speed);
+                    moved = true;
+                }
+
+                if (keys['ArrowDown'] || keys['KeyS']) {
+                    window.myAvatar.translateZ(-speed);
+                    moved = true;
+                }
+
+                if (keys['ArrowLeft'] || keys['KeyA']) {
+                    window.myAvatar.rotation.y += 0.05;
+                    moved = true;
+                }
+
+                if (keys['ArrowRight'] || keys['KeyD']) {
+                    window.myAvatar.rotation.y -= 0.05;
+                    moved = true;
+                }
+
+                if (moved) {
+
+                    switchAnimation(socket.id, "walk");
+
+                    socket.emit('playerMovement', {
+                        x: window.myAvatar.position.x,
+                        z: window.myAvatar.position.z,
+                        rotation: window.myAvatar.rotation.y
+                    });
+
+                } else {
+
+                    switchAnimation(socket.id, "idle");
+                }
+
+                // Luôn bám theo nhân vật
+                controls.target.copy(window.myAvatar.position);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        /* ================= RESIZE ================= */
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+
+</html> -->
+
+<!-- 
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Metaverse Office - Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+        }
+    </style>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+
+<body>
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script type="module">
+
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        /* ================= BASIC ================= */
+
+        const socket = io();
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+
+        const clock = new THREE.Clock();
+
+        /* ================= CAMERA ================= */
+
+        const camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            5000 // Tăng Far plane để không bị mất hình khi ở xa
+        );
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        /* ================= CONTROLS ================= */
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.enablePan = false;
+
+        // --- ĐIỀU CHỈNH GIỚI HẠN ZOOM ---
+        controls.minDistance = 10;   // Khoảng cách tối thiểu (không cho lại quá gần)
+        controls.maxDistance = 150;  // Tăng mạnh khoảng cách tối đa để zoom nhỏ lại được
+
+        // Chỉnh góc nhìn để không bị quay xuống dưới mặt đất
+        controls.maxPolarAngle = Math.PI / 2.2; 
+
+        /* ================= LIGHT ================= */
+
+        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+
+        /* ================= LOADERS ================= */
+
+        const loader = new GLTFLoader();
+
+        window.players = {};
+        window.mixers = {};
+        window.actions = {};
+        window.myAvatar = null;
+
+        /* ================= LOAD MAP ================= */
+
+        loader.load('models/map.glb', (gltf) => {
+            const office = gltf.scene;
+            office.scale.set(6, 6, 6);
+            scene.add(office);
+        });
+
+        /* ================= CREATE PLAYER ================= */
+
+        window.createPlayer = (id, data, isMe) => {
+
+            loader.load('models/Soldier.glb', (gltf) => {
+
+                const model = gltf.scene;
+                model.scale.set(6, 14, 6);
+                model.position.set(data.x || 0, 3.5, data.z || 0);
+
+                scene.add(model);
+                window.players[id] = model;
+
+                /* ===== ANIMATION SETUP ===== */
+
+                const mixer = new THREE.AnimationMixer(model);
+                window.mixers[id] = mixer;
+
+                const clips = gltf.animations;
+                const idle = mixer.clipAction(clips[0]);
+                const walk = mixer.clipAction(clips[3] || clips[1]);
+
+                idle.play();
+
+                window.actions[id] = {
+                    idle: idle,
+                    walk: walk,
+                    current: idle
+                };
+
+                if (isMe) {
+                    window.myAvatar = model;
+
+                    // --- CHỈNH VỊ TRÍ CAMERA BAN ĐẦU (Góc nhìn thứ 3) ---
+                    camera.position.set(
+                        model.position.x,
+                        model.position.y + 35, // Đẩy camera lên cao hơn hẳn mặt đất
+                        model.position.z - 60  // Đẩy camera ra xa sau lưng nhân vật
+                    );
+
+                    controls.target.set(model.position.x, model.position.y + 15, model.position.z);
+                }
+            });
+        };
+
+        /* ================= SOCKET EVENTS ================= */
+
+        socket.on('currentPlayers', (serverPlayers) => {
+            Object.keys(serverPlayers).forEach(id => {
+                if (!window.players[id])
+                    window.createPlayer(id, serverPlayers[id], id === socket.id);
+            });
+        });
+
+        socket.on('newPlayer', (data) =>
+            window.createPlayer(data.id, data, false)
+        );
+
+        socket.on('playerMoved', (data) => {
+            if (window.players[data.id] && data.id !== socket.id) {
+                window.players[data.id].position.set(data.x, 3.5, data.z);
+                window.players[data.id].rotation.y = data.rotation;
+            }
+        });
+
+        /* ================= KEYBOARD ================= */
+
+        const keys = {};
+        window.onkeydown = (e) => keys[e.code] = true;
+        window.onkeyup = (e) => keys[e.code] = false;
+
+        /* ================= SWITCH ANIMATION ================= */
+
+        function switchAnimation(id, type) {
+            const actionSet = window.actions[id];
+            if (!actionSet) return;
+
+            const next = actionSet[type];
+            if (actionSet.current === next) return;
+
+            actionSet.current.fadeOut(0.2);
+            next.reset().fadeIn(0.2).play();
+
+            actionSet.current = next;
+        }
+
+        /* ================= LOOP ================= */
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            Object.values(window.mixers).forEach(mixer => {
+                mixer.update(delta);
+            });
+
+            if (window.myAvatar) {
+                let moved = false;
+                const speed = 0.45;
+
+                if (keys['ArrowUp'] || keys['KeyW']) {
+                    window.myAvatar.translateZ(speed);
+                    moved = true;
+                }
+                if (keys['ArrowDown'] || keys['KeyS']) {
+                    window.myAvatar.translateZ(-speed);
+                    moved = true;
+                }
+                if (keys['ArrowLeft'] || keys['KeyA']) {
+                    window.myAvatar.rotation.y += 0.05;
+                    moved = true;
+                }
+                if (keys['ArrowRight'] || keys['KeyD']) {
+                    window.myAvatar.rotation.y -= 0.05;
+                    moved = true;
+                }
+
+                if (moved) {
+                    switchAnimation(socket.id, "walk");
+                    socket.emit('playerMovement', {
+                        x: window.myAvatar.position.x,
+                        z: window.myAvatar.position.z,
+                        rotation: window.myAvatar.rotation.y
+                    });
+                } else {
+                    switchAnimation(socket.id, "idle");
+                }
+
+                // Camera luôn hướng về phía trên đầu nhân vật một chút (để không nhìn vào chân)
+                controls.target.set(
+                    window.myAvatar.position.x, 
+                    window.myAvatar.position.y + 15, 
+                    window.myAvatar.position.z
+                );
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        /* ================= RESIZE ================= */
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Metaverse Office - Bright & Vivid</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+        }
+    </style>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+
+<body>
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        /* ================= BASIC & RENDERER SETTINGS ================= */
+        const socket = io();
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xa3e4ff); // Màu trời sáng hơn một chút
+
+        const clock = new THREE.Clock();
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+
+        // --- CẤU HÌNH MÀU SẮC TƯƠI SÁNG ---
+        renderer.outputEncoding = THREE.sRGBEncoding; // Xuất màu chuẩn sRGB
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; // Hiệu ứng phim ảnh rực rỡ
+        renderer.toneMappingExposure = 1.2; // Độ phơi sáng (tăng lên để sáng hơn)
+
+        document.body.appendChild(renderer.domElement);
+
+        /* ================= CAMERA ================= */
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
+
+        /* ================= CONTROLS ================= */
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 10;
+        controls.maxDistance = 150;
+        controls.maxPolarAngle = Math.PI / 2.2;
+
+        /* ================= LIGHT SYSTEM (LÀM ĐẸP MÀU) ================= */
+        // 1. Ánh sáng môi trường (Làm sáng các vùng tối)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
+        scene.add(ambientLight);
+
+        // 2. Ánh sáng hướng (Tạo khối và độ bóng bẩy cho model)
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        sunLight.position.set(50, 100, 50);
+        scene.add(sunLight);
+
+        // 3. Thêm một chút ánh sáng xanh từ dưới lên (Giúp màu sắc sâu hơn)
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+        scene.add(hemiLight);
+
+        /* ================= LOADERS ================= */
+        const loader = new GLTFLoader();
+        window.players = {};
+        window.mixers = {};
+        window.actions = {};
+        window.myAvatar = null;
+
+        /* ================= LOAD MAP ================= */
+        loader.load('models/map.glb', (gltf) => {
+            const office = gltf.scene;
+            office.scale.set(6, 6, 6);
+
+            // Tối ưu vật liệu của Map để bắt sáng tốt hơn
+            office.traverse((child) => {
+                if (child.isMesh) {
+                    child.material.envMapIntensity = 1.5;
+                }
+            });
+            scene.add(office);
+        });
+
+        /* ================= CREATE PLAYER ================= */
+        window.createPlayer = (id, data, isMe) => {
+            loader.load('models/Soldier.glb', (gltf) => {
+                const model = gltf.scene;
+                model.scale.set(6, 14, 6);
+                model.position.set(data.x || 0, 3.5, data.z || 0);
+
+                // Làm nhân vật sáng và rực rỡ hơn
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        if (child.material) child.material.metalness = 0.2;
+                    }
+                });
+
+                scene.add(model);
+                window.players[id] = model;
+
+                const mixer = new THREE.AnimationMixer(model);
+                window.mixers[id] = mixer;
+                const clips = gltf.animations;
+                const idle = mixer.clipAction(clips[0]);
+                const walk = mixer.clipAction(clips[3] || clips[1]);
+                idle.play();
+
+                window.actions[id] = { idle, walk, current: idle };
+
+                if (isMe) {
+                    window.myAvatar = model;
+                    camera.position.set(model.position.x, model.position.y + 40, model.position.z - 70);
+                    controls.target.set(model.position.x, model.position.y + 15, model.position.z);
+                }
+            });
+        };
+
+        /* ================= SOCKET & LOGIC (GIỮ NGUYÊN) ================= */
+        socket.on('currentPlayers', (serverPlayers) => {
+            Object.keys(serverPlayers).forEach(id => {
+                if (!window.players[id]) window.createPlayer(id, serverPlayers[id], id === socket.id);
+            });
+        });
+        socket.on('newPlayer', (data) => window.createPlayer(data.id, data, false));
+        socket.on('playerMoved', (data) => {
+            if (window.players[data.id] && data.id !== socket.id) {
+                window.players[data.id].position.set(data.x, 3.5, data.z);
+                window.players[data.id].rotation.y = data.rotation;
+            }
+        });
+
+        const keys = {};
+        window.onkeydown = (e) => keys[e.code] = true;
+        window.onkeyup = (e) => keys[e.code] = false;
+
+        function switchAnimation(id, type) {
+            const actionSet = window.actions[id];
+            if (!actionSet) return;
+            const next = actionSet[type];
+            if (actionSet.current === next) return;
+            actionSet.current.fadeOut(0.2);
+            next.reset().fadeIn(0.2).play();
+            actionSet.current = next;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            Object.values(window.mixers).forEach(mixer => mixer.update(delta));
+
+            if (window.myAvatar) {
+                let moved = false;
+                const speed = 0.45;
+                if (keys['ArrowUp'] || keys['KeyW']) { window.myAvatar.translateZ(speed); moved = true; }
+                if (keys['ArrowDown'] || keys['KeyS']) { window.myAvatar.translateZ(-speed); moved = true; }
+                if (keys['ArrowLeft'] || keys['KeyA']) { window.myAvatar.rotation.y += 0.05; moved = true; }
+                if (keys['ArrowRight'] || keys['KeyD']) { window.myAvatar.rotation.y -= 0.05; moved = true; }
+
+                if (moved) {
+                    switchAnimation(socket.id, "walk");
+                    socket.emit('playerMovement', { x: window.myAvatar.position.x, z: window.myAvatar.position.z, rotation: window.myAvatar.rotation.y });
+                } else {
+                    switchAnimation(socket.id, "idle");
+                }
+                controls.target.set(window.myAvatar.position.x, window.myAvatar.position.y + 15, window.myAvatar.position.z);
+            }
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 
