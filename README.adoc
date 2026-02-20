@@ -1,1 +1,77 @@
 
+= Project : Metaverse City Multiplayer
+:author: [Nguyen Huu Minh Dang]
+:email: [cosa199212@gmail.com]
+
+== 1. Project Overview
+This project is a **real-time 3D Metaverse environment** that allows multiple users to connect, navigate, and interact within a simulated urban space. The development focuses on optimizing vivid visual effects, flexible camera systems, and seamless player data synchronization using the Socket.io protocol.
+
+== 2. Technical Stack
+
+[cols="1,3"]
+|===
+| Component | Technology Used
+
+| **Frontend** | Three.js (WebGL), JavaScript (ES6+)
+| **Backend** | Node.js, Express
+| **Multiplayer** | Socket.io
+| **3D Assets** | GLTF/GLB Models (Soldier, City Map)
+|===
+
+== 3. Core Features
+
+=== 3.1. Terrain & Environment
+The urban environment is rendered from a `models/map.glb` file with a 6x magnification scale.
+* **Lighting System:** A 3-layer lighting setup is implemented to enhance realism:
+** `AmbientLight`: Provides global illumination for shadow areas.
+** `DirectionalLight`: Simulates sunlight to create depth and highlights on structures.
+** `HemisphereLight`: Adds color contrast between the sky and ground for a more vibrant atmosphere.
+* **Material Optimization:** Meshes are traversed to increase `envMapIntensity`, ensuring materials react better to the light sources.
+
+=== 3.2. Character System & Animation
+* **Model:** Utilizes a fully rigged "Soldier" character (`Soldier.glb`).
+* **Animation State Machine:** ** Uses `THREE.AnimationMixer` to manage animation clips.
+** Implements smooth cross-fading transitions between `idle` and `walk` states via a custom `switchAnimation` function.
+* **Character Assignment:** The server randomly assigns a character model (e.g., 'boy' or 'girl') to each new player upon connection.
+
+=== 3.3. Advanced Camera System
+The camera is configured for an optimal Third-Person Perspective (TPP):
+* **OrbitControls:** ** `minDistance`: 10 | `maxDistance`: 150 (Allows extensive zooming to view the entire map).
+** `maxPolarAngle`: Restricted to prevent the camera from clipping through the ground.
+* **Smoothing:** `enableDamping` is enabled to provide fluid, high-quality camera rotation.
+
+== 4. Multiplayer Architecture (Socket.io)
+
+The system follows a **Client-Server-Client** synchronization model:
+
+1. **Connection:** Upon entry, the server generates a unique ID and initial position for the player.
+2. **Synchronization:** ** `playerMovement`: The client emits (x, z) coordinates and rotation data to the server during movement.
+** `playerMoved`: The server broadcasts this data to all other connected clients to update the respective avatars in real-time.
+3. **State Management:** Handles player disconnections by automatically removing the avatar model from all active clients' scenes.
+
+[source,javascript]
+----
+// Server-side movement synchronization logic
+socket.on('playerMovement', (movementData) => {
+    if (players[socket.id]) {
+        players[socket.id].x = movementData.x;
+        players[socket.id].z = movementData.z;
+        players[socket.id].rotation = movementData.rotation;
+        socket.broadcast.emit('playerMoved', { id: socket.id, ...players[socket.id] });
+    }
+});
+----
+
+== 5. "Bright & Vivid" Rendering Techniques
+Specific configurations were applied to achieve a high-end visual style:
+* **ACESFilmicToneMapping:** A tone mapping algorithm that mimics filmic high-dynamic-range for realistic light behavior.
+* **sRGBEncoding:** Ensures color accuracy from the 3D source to the user's browser.
+* **Exposure Control:** The `toneMappingExposure` is set to `1.2` to create a bright, daylight-saturated look.
+
+== 6. Deployment Guide
+1. Install dependencies: `npm install express socket.io`
+2. Start the server: `node server.js`
+3. Access: `http://localhost:3000`
+
+---
+_This project demonstrates the integration of 3D Web Graphics and real-time network programming._
